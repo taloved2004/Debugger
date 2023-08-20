@@ -29,6 +29,8 @@ typedef Elf64_Xword Elf64_Size;
 typedef Elf64_Sxword Elf64_Ssize;
 
 #define EI_NIDENT 16
+#define SHT_DYNAMIC 6
+#define DT_BIND_NOW_TAG_VALUE 30
 
 /*
  * ELF header.

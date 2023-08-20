@@ -1,0 +1,1 @@
+This symbol is a global variable, not a function!

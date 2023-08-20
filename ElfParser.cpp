@@ -12,10 +12,9 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
-
-//  for hasLazyBinding
-#include <libelf.h>
-#include <gelf.h>
+#include <iostream>
+#include <fcntl.h>    /* For O_RDWR */
+#include <unistd.h>   
 
 #include "elf64.h"
 
@@ -29,7 +28,7 @@
  * exe_file_name	- The file to check if executable.
  * return value		- True - if executable. False - otherwise
  */
-bool isExec(char *exe_file_name)
+bool isExec(const char *exe_file_name)
 {
     //  open elf file
     FILE *file = fopen(exe_file_name, "rb");
@@ -59,11 +58,12 @@ bool isExec(char *exe_file_name)
  * exe_file_name	- The file where we search the symbol in.
  * error_val		- If  1: A global symbol was found, and defined in the given executable.
  * 			- If -1: Symbol not found.
- *			- If -2: Only a local symbol was found.
- * 			- If -3: The symbol was found, it is global, but it is not defined in the executable.
+ *			- If -2: Multiple local functions were found.
+ * 			- If -3: The symbol was found, it is global, but it is not defined in the executable. (then search the got)
+ * 			- If -4: The symbol was found, but it's a variable.
  * return value		- The address which the symbol_name will be loaded to, if the symbol was found and is from text section.
  */
-unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *error_val)
+unsigned long find_symbol(const char *symbol_name, const char *exe_file_name, int *error_val)
 {
     *error_val = 0;
     FILE *file = fopen(exe_file_name, "rb");
@@ -100,7 +100,7 @@ unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *err
     // extract the symbol table section and string table
     Elf64_Shdr symtab;
     Elf64_Shdr strtab;
-    int text_section_index;
+    int text_section_index=-1;
     char name[256];
     for (int i = 0; i < elfHeader.e_shnum; ++i)
     {
@@ -140,9 +140,8 @@ unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *err
         {
             strtab = curr_section;
         }
-        else if (strcmp(name, "text") == 0)
+        else if (strcmp(name, ".text") == 0)
         {
-            std::cout << "found text section\n"; // Note: for debug
             text_section_index = i;
         }
     }
@@ -150,6 +149,8 @@ unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *err
     // find the symbol section that matches symbol_name
     int numbers_of_symbols = symtab.sh_size / symtab.sh_entsize;
     char name2[256];
+    unsigned long possibe_address;
+    int count_locals = 0;
     for (int i = 0; i < numbers_of_symbols; ++i)
     {
         Elf64_Sym curr_symbol;
@@ -183,22 +184,44 @@ unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *err
         if (strcmp(name2, symbol_name) == 0)
         {
             // if defined in the **text section** of the file and global- finish
-            if (curr_symbol.st_shndx == text_section_index && ELF64_ST_BIND(curr_symbol.st_info))
+            if (curr_symbol.st_shndx != SHN_UNDEF)
             {
-                *error_val = 1;
-                fclose(file);
-                return curr_symbol.st_value;
-            }
+					if(curr_symbol.st_shndx == text_section_index) // in text - meaning a function
+					{	
+						if(ELF64_ST_BIND(curr_symbol.st_info))// global
+						{					
+							//	found a global function in text section
+							*error_val = 1;
+							fclose(file);
+							return curr_symbol.st_value;
+						}
+						else
+						{
+							// its a static function
+							if(count_locals++==0)
+							{
+								possibe_address = curr_symbol.st_value;
+							}
+						}
+					}						
+					else{
+						// this is a variable
+						*error_val = -4;
+					}
+				}
             //  if the symbl is from shared library (and therefore mustbe global)
             if (curr_symbol.st_shndx == SHN_UNDEF)
                 *error_val = -3;
-
-            //  symbol is local (static function or a variable)
-            if (curr_symbol.st_shndx != SHN_UNDEF)
-                *error_val = -2;
         }
     }
-
+	if(count_locals==1){
+		*error_val = 1;
+		fclose(file);
+		return possibe_address;
+	}
+	if(count_locals>=2)
+		*error_val=-2;
+	
     // if error wasn't changed- that means we never found the right symbol. so we return -1;
     if ((*error_val) == 0)
         *error_val = -1;
@@ -213,7 +236,7 @@ unsigned long find_symbol(const char *symbol_name, char *exe_file_name, int *err
  * 			- If -1: Symbol not found.
  * return value		- The address of the GOT enterance which the symbol_name will be loaded to, if the symbol was found.
  */
-unsigned long get_location_in_got(const char *symbol_name, char *exe_file_name, int *error_val)
+unsigned long get_location_in_got(const char *symbol_name, const char *exe_file_name, int *error_val)
 {
     *error_val = 0;
     FILE *file = fopen(exe_file_name, "rb");
@@ -388,9 +411,10 @@ unsigned long get_location_in_got(const char *symbol_name, char *exe_file_name, 
         }
 
         //  check if the r_info field is the same as the index in the dynsym table (meaning that this relocation is the one of the symbol)
-        if (symbol_index == ELF64_R_SYM(curr_rela.r_info))
+        if ((unsigned int)symbol_index == ELF64_R_SYM(curr_rela.r_info))
         {
             symbol_rela_entry = curr_rela;
+            *error_val = 1;
         }
     }
 
@@ -402,68 +426,87 @@ unsigned long get_location_in_got(const char *symbol_name, char *exe_file_name, 
     return address_in_GOT;
 }
 
-bool hasLazyBinding(const char *filename)
+//  If a dynmic section hsa an entry that has "DT_BIND_NOW" tag, it means that the binding should be at loading time and not lazy binding
+//  So - we will iterate the section and if a section is dynamic, we will search it's entries to see if one of them has this tag
+bool hasLazyBinding(const char *exe_file_name)
 {
-    int fd;
-    Elf *elf;
-
-    if (elf_version(EV_CURRENT) == EV_NONE)
+	bool has_dynamic = false;
+    FILE *file = fopen(exe_file_name, "rb");
+    if (file == NULL)
     {
-        perror("ELF library initialization failed.\n");
-        return false;
+        perror("fopen");
+        return 0;
     }
 
-    if ((fd = open(filename, O_RDONLY, 0)) < 0)
+    // extract elf header
+    Elf64_Ehdr elfHeader;
+    if (fread(&elfHeader, sizeof(elfHeader), 1, file) != 1)
     {
-        perror("open");
-        return false;
+        perror("fread");
+        fclose(file);
+        return 0;
     }
 
-    if ((elf = elf_begin(fd, ELF_C_READ, NULL)) == NULL)
+    // extract the section header string table - from the elf header
+    Elf64_Shdr shstrtab;
+    if (fseek(file, elfHeader.e_shoff + (elfHeader.e_shstrndx * elfHeader.e_shentsize), SEEK_SET) != 0)
     {
-        perror("elf_begin");
-        close(fd);
-        return false;
+        perror("fseek");
+        fclose(file);
+        return 0;
+    }
+    if (fread(&shstrtab, elfHeader.e_shentsize, 1, file) != 1)
+    {
+        perror("fread");
+        fclose(file);
+        return 0;
     }
 
-    Elf_Scn *scn = NULL;
-    GElf_Dyn dyn;
-    bool hasBindNow = false;
-
-    while ((scn = elf_nextscn(elf, scn)) != NULL)
+    // extract the symbol table section and string table
+    int numbers_of_entries;
+    Elf64_Shdr curr_section;
+    for (int i = 0; i < elfHeader.e_shnum; ++i)
     {
-        if (gelf_getshdr(scn, &shdr) != &shdr)
+
+        if (fseek(file, elfHeader.e_shoff + i * elfHeader.e_shentsize, SEEK_SET) != 0)
         {
-            elf_end(elf);
-            close(fd);
-            return false;
+            perror("fseek");
+            fclose(file);
+            return 0;
+        }
+        if (fread(&curr_section, elfHeader.e_shentsize, 1, file) != 1)
+        {
+            perror("fread");
+            fclose(file);
+            return 0;
         }
 
-        if (shdr.sh_type == SHT_DYNAMIC)
+        if (curr_section.sh_type == SHT_DYNAMIC)
         {
-            Elf_Data *data = elf_getdata(scn, NULL);
-            int numDynEntries = data->d_size / shdr.sh_entsize;
-
-            for (int i = 0; i < numDynEntries; ++i)
+			has_dynamic = true;
+            //  iterate
+            numbers_of_entries = curr_section.sh_size / curr_section.sh_entsize;
+            for (int i = 0; i < numbers_of_entries; ++i)
             {
-                gelf_getdyn(data, i, &dyn);
-
-                if (dyn.d_tag == DT_BIND_NOW)
+                Elf64_Dyn curr_entry;
+                if (fseek(file, curr_section.sh_offset + i * curr_section.sh_entsize, SEEK_SET) != 0)
                 {
-                    hasBindNow = true;
-                    break;
+                    perror("fseek");
+                    fclose(file);
+                    return 0;
+                }
+                if (fread(&curr_entry, curr_section.sh_entsize, 1, file) != 1)
+                {
+                    perror("fread");
+                    fclose(file);
+                    return 0;
+                }
+                if (curr_entry.d_tag == DT_BIND_NOW_TAG_VALUE)
+                {
+                    return false;
                 }
             }
         }
-
-        if (hasBindNow)
-        {
-            break;
-        }
     }
-
-    elf_end(elf);
-    close(fd);
-
-    return !hasBindNow; // Return true if lazy binding is used, false if not
+    return has_dynamic;
 }
