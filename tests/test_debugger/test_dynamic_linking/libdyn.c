@@ -3,8 +3,12 @@
 //gcc -shared -fPIC -o libdyn.so libdyn.c
 //sudo mv libdyn.so /usr/lib/
 
+int internal_func(int a){
+return 2;
+}
 
 int foo( int a){
+internal_func(a);
 a++;
 return a;
 }
