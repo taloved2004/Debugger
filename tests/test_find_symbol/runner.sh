@@ -1,3 +1,16 @@
+#!/bin/bash
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+EXIT_STATUS=0
+
+echo "Compiling files..."
+echo
+echo ------------------
+echo
+
 #compile main test file
 g++ --std=c++11 -o test_find_symbol.out main.cpp
 
@@ -22,12 +35,23 @@ do
         ./test_find_symbol.out foo tests_files/test${i}.out > outputs/out${i}.txt
 done
 
-#print outputs
-for (( i=1; i<=8; i++ ));
-do
-	echo "result for test ${i}: "
-	cat outputs/out${i}.txt
-done
+
+echo "Running diff"
+echo
+    for (( i=1; i<=8; i++)); do
+        diff "./exp_outputs/exp${i}.txt" "./outputs/out${i}.txt" # &> /dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "test ${i}: ${GREEN}PASS${NC}"
+        else
+            EXIT_STATUS=1
+            echo -e "test ${i}: ${RED}FAIL${NC}"
+        fi
+    done
+
+echo
+
+
+
 
 #remove executable files
 for (( i=1; i<=8; i++ ));
@@ -36,4 +60,4 @@ do
 done
 
 
-#rm ./test_find_symbol.out
+rm ./test_find_symbol.out

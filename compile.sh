@@ -1,14 +1,22 @@
 #!/bin/bash
+#print messege
+echo "Compiling files..."
+echo
 
 #create debugger
 g++ --std=c++11 -o debug  ./Files/*.cpp
 
-#create shared library for tests purposes
-gcc -shared -fPIC -o libdyn.so ./tests/test_debugger/test_dynamic_linking/libdyn.c
-sudo mv libdyn.so /usr/lib/
+#check if it's for debugging - if so create minor tests
+if [ -z "$1" ]
+then
+	exit 0
+fi
 
-#create minor tests
-gcc -o ./tests/minor_tests/test.out ./tests/minor_tests/test.c -no-pie
-gcc -o ./tests/minor_tests/dyn_test.out ./tests/minor_tests/dyn_test.c -no-pie -ldyn -Wl,-z,now
-gcc -o ./tests/minor_tests/lazy_dyn.out ./tests/minor_tests/dyn_test.c -no-pie -ldyn -Wl,-zlazy
-gcc -o ./tests/minor_tests/pic_test.out ./tests/minor_tests/test.c 
+echo "Compiling minor tests files..."
+
+#call compile script from minor tests folder
+
+chmod +x ./tests/minor_tests/compile.sh
+cd ./tests/minor_tests
+./compile.sh
+cd - > /dev/null

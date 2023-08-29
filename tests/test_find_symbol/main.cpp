@@ -19,7 +19,7 @@
 #include <fcntl.h>   
 #include <unistd.h> 
 
-#include "../../elf64.h"
+#include "../../Files/elf64.h"
 
 /* symbol_name		- The symbol (maybe function) we need to search for.
  * exe_file_name	- The file where we search the symbol in.

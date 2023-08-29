@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #compile static linking tests
-for (( i=1; i<=4; i++));
+for (( i=1; i<=6; i++));
 do
 	gcc test_static_linking/test${i}.c -no-pie -o test_static_linking/test${i}.out
 done

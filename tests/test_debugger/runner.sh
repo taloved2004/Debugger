@@ -6,28 +6,30 @@ NC='\033[0m'
 
 EXIT_STATUS=0
 
-chmod +x ./compiler.sh
+chmod +x ./compile.sh
 
 echo "compiling files"
 echo
 echo ------------------
 
-./compiler.sh
+./compile.sh
 
 echo "executing static tests"
 for ((i=1; i<=6; i++ )); 
 do
-	../../prf ./test_static_linking/test${i}.out < inputs/inputs_static/in${i}.out > outputs/static/out${i}.txt
+	../../debug ./test_static_linking/test${i}.out < inputs/inputs_static/in${i}.out > outputs/static/out${i}.txt
 done
 
 echo "executing dynamic tests"
 for ((i=1; i<=5; i++ )); 
 do
-        ../../prf ./test_dynamic_linking/test${i} < inputs/inputs_dynamic/in${i}.out > outputs/dynamic/out${i}.txt
-	../../prf ./test_dynamic_linking/test${i}_lazy < inputs/inputs_dynamic/in${i}.out > outputs/dynamic/out${i}_lazy.txt
+        ../../debug ./test_dynamic_linking/test${i} < inputs/inputs_dynamic/in${i}.out > outputs/dynamic/out${i}.txt
+	../../debug ./test_dynamic_linking/test${i}_lazy < inputs/inputs_dynamic/in${i}.out > outputs/dynamic/out${i}_lazy.txt
 done
 
 
+echo 
+echo "----------------"
 
 echo "running diff - static"
     for (( i=1; i<=6; i++)); do
