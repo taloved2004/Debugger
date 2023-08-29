@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #compile static linking tests
 for (( i=1; i<=4; i++));
 do
