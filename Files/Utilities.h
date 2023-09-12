@@ -21,6 +21,8 @@
 #include <vector>
 #include <sstream>
 #include <map>
+#include <fstream>
+
 
 #include "ElfParser.h"
 
@@ -58,7 +60,17 @@ unsigned long convertHexaStringToLong(std::string hexa_string);
 
 //  ----------- Handle memory requset functions - END -----------
 
+//	-------------- Parsing symbol's name aux ----------------
+
+std::string removeArgsFromString(std::string str);
+std::string removeNameSpace(std::string str);
+std::string demangleSymbol(const char* mangledSymbol);
+
+//	-------------- Parsing symbol's name aux - END ----------------
+
 bool checkArgs(int argc, char *argv[]);
 std::string getFunctionFromUsr();
+
+
 
 #endif

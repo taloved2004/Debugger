@@ -25,10 +25,11 @@ bool isExec(const char *exe_file_name)
 
     fclose(file);
     //  check type of file
-    if (elfHeader.e_type != ET_EXEC)
+    if (elfHeader.e_type != ET_EXEC||elfHeader.e_type != ET_DYN)
         return false;
     return true;
 }
+
 
 unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *symbol_name, int *error_val, FILE *file, int text_section_index)
 {
@@ -68,6 +69,10 @@ unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *sy
         }
         // found a candidate
         std::string name_str(name2);
+		
+		//get the human-readable name if it's a compiler generated name (such as "_Z3foovx")
+		std::string real_name(demangleSymbol(name2));
+		name_str = real_name == ""? name_str : real_name;
         std::string symbol_str(symbol_name);
         if (name_str == symbol_str || name_str.find(symbol_str + "@") != std::string::npos)
         {
@@ -135,7 +140,6 @@ unsigned long find_symbol(const char *symbol_name, const char *exe_file_name, in
     FILE *file = fopen(exe_file_name, "rb");
     if (file == NULL)
     {
-        //	std::cout << exe_file_name << "\n";
         perror("fopen");
         return 0;
     }
@@ -207,7 +211,7 @@ unsigned long find_symbol(const char *symbol_name, const char *exe_file_name, in
             fclose(file);
             return 0;
         }
-
+		
         if (strcmp(name, ".symtab") == 0)
 
         {

@@ -7,20 +7,13 @@ What will it allow you to do:
 2. While debugging the exe file, you have the option to print the current value of the registers of the running program that's being tracked.
 3. While debugging the exe file, you have the option to print the current value in a memory address, as long as it readable (legal and with read permissions).
 
-***important:***
-in order for the debugger to work, compile your executable file with the flag
-'-no-pie'
 
-for example:
-gcc -o "exe_name" "File_name1.c" ... "File_nameX.c" -no-pie
-
-
-To compile the debugger - do:
--chmod +x ./compile.sh 
+To compile the debugger - execute the following:
+- chmod +x ./compile.sh 
 - ./compile
 
 To run the debugger - execute the following:
-./debug "path_to_your_executable"
+- ./debug "path_to_your_executable"
 
 
 Than you will be requsted to enter the name of the function you will want to put a breakpoint in - from your file or from a shared library.

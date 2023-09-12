@@ -17,8 +17,11 @@
 #include <stdbool.h>
 #include <iostream>
 #include <unistd.h>
+#include <cxxabi.h>
+#include <cstdlib>
 
 #include "elf64.h"
+#include "Utilities.h"
 
 #define ET_NONE 0 // No file type
 #define ET_REL 1  // Relocatable file

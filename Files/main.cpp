@@ -32,7 +32,6 @@ int main(int argc, char *argv[])
         switch (error_val)
         {
         case 0:
-            std::cout << "syscall failed\n";
             break;
         case -1:
             std::cout << "Could not find such funcion\n";

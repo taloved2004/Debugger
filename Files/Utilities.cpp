@@ -152,16 +152,21 @@ bool checkArgs(int argc, char *argv[])
     //  check amount of arguments
     if (argc != 2)
     {
-        cout << "Error: Invalid number of arguments\n";
+        cout << "Usage: ./debug \"Path to your executable\"\n";
         return false;
     }
     //  check if file is executable
     string exe_file_name = argv[1];
-    /*if (!isExec(exe_file_name.c_str()))
-    {
-        cout << "Error: File is not an executable\n";
-        return false;
-    }*/
+    std::ifstream file(exe_file_name.c_str());
+    if (file.good() == false) {
+		cout << "Could not find the file...\n"; 
+		return false;
+	} 
+		
+	if(isExec(exe_file_name.c_str()) == false){
+		cout << "File is Not executable...\n"; 
+		return false;
+	}
     return true;
 }
 
@@ -177,3 +182,52 @@ std::string getFunctionFromUsr()
     }
     return func_name;
 }
+
+
+//	-------------- Parsing symbol's name aux ----------------
+
+// remove the args from the name (for example "foo(int)" ->  "foo")
+std::string removeArgsFromString(std::string str){
+	size_t pos = str.find('(');
+		if (pos != std::string::npos) {
+			return str.substr(0, pos);
+		} 
+		else {
+			// If '(' is not found, return the original string.
+			return str;
+		} 
+}
+
+// remove the namespace from the name (for example "std::foo" ->  "foo")
+std::string removeNameSpace(std::string str) {
+    // Find the last occurrence of "::" in the input string.
+    size_t pos = str.rfind("::");
+
+    if (pos != std::string::npos) {
+        // If "::" is found, extract the substring starting from that position.
+        return str.substr(pos+2);
+    } else {
+        // If "::" is not found, return the original string.
+        return str;
+    }
+}
+
+//	given a function's name, if it was altered by the compiler, than return real name
+std::string demangleSymbol(const char* mangledSymbol) {
+    int status;
+    char* demangledName = abi::__cxa_demangle(mangledSymbol, nullptr, nullptr, &status);
+
+    if (status == 0) {
+        std::string result(demangledName);
+        free(demangledName); // Don't forget to free the memory.
+		
+		//	get only the name of the function
+		result = removeArgsFromString(result);
+		result = removeNameSpace(result);
+		
+		return result;
+	}
+        return "";
+}
+
+//	-------------- Parsing symbol's name aux - END ----------------
