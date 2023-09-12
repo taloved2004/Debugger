@@ -25,7 +25,7 @@ bool isExec(const char *exe_file_name)
 
     fclose(file);
     //  check type of file
-    if (elfHeader.e_type != ET_EXEC||elfHeader.e_type != ET_DYN)
+    if (elfHeader.e_type != ET_EXEC && elfHeader.e_type != ET_DYN)
         return false;
     return true;
 }
