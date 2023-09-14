@@ -3,18 +3,79 @@
 
 using namespace std;
 
+void advanceOneCommand(){
+	int wait_status;
+    struct user_regs_struct regs;
+	BreakPoints &my_breakPoints = BreakPoints::getInstance();	
+	pid_t child_pid = my_breakPoints.getChildPid();
+		
+	//	get regs.rip
+	ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+	unsigned long next_command_address = regs.rip;
+	
+	//	check if the next command is a breakpoint and if so - restore the original data
+	bool next_is_breakpoint = my_breakPoints.isExists(next_command_address);
+	BreakPoint* breakPoint;
+	if(next_is_breakpoint){
+		breakPoint = my_breakPoints.getBreakPoint(next_command_address);
+		
+		// put original data back
+		ptrace(PTRACE_POKETEXT, child_pid, (void *)breakPoint->address, (void *)breakPoint->original_data);
+		
+	}
+	//	step one command
+	ptrace(PTRACE_SINGLESTEP, child_pid, NULL, NULL);
+	wait(&wait_status);
+	
+	//	restore breakpoint if needed
+	if(next_is_breakpoint){
+		// put breakpoint back
+		ptrace(PTRACE_POKETEXT, child_pid, (void *)breakPoint->address, (void *)breakPoint->data_trap);
+	}	
+	
+	if(WIFEXITED(wait_status)){
+		printEndMsg(wait_status);
+		exit(0);
+	}
+	
+	
+	//	get regs.rip
+	ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+	next_command_address = regs.rip;
+	
+	//	check if the next command is a breakpoint and if so - restore the original data
+	if(my_breakPoints.isExists(next_command_address)){
+		BreakPoint* breakPoint = my_breakPoints.getBreakPoint(next_command_address);
+		printStopMsg(breakPoint->symbol_name);
+		
+		// put original data back
+		ptrace(PTRACE_POKETEXT, child_pid, (void *)breakPoint->address, (void *)breakPoint->original_data);
+	}
+	
+}
+
+void handleOneStep(pid_t child_pid){	
+		advanceOneCommand();
+		
+		struct user_regs_struct regs;
+		ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+		printf("Stopped at 0x%llx:\n", regs.rip);
+}
+
 void handleRequset(std::string req, pid_t child_pid)
 {
     if (req == "")
         return;
     std::vector<std::string> req_vector = parseRequset(req.c_str());
 
-    if (req_vector[0] == "regs")
+    if (req_vector[0] == "registers")
         printRegs(child_pid);
     else if (req_vector[0] == "mem")
         printMem(req_vector, child_pid);
     else if (req_vector[0] == "run")
         std::cout << "Running the process...\n";
+    else if (req_vector[0] == "step")
+		handleOneStep(child_pid);
     else if (req_vector[0] == "--help")
         printHelpMsg();
     else if (req_vector[0] == "quit")
@@ -312,9 +373,6 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
 	//	update real location in memory
 	address_found += start_address;
 
-    //	interact with user
-    interactWithUser(child_pid);
-
     //	start until the entry point of the executable
     //	get entry point address
     unsigned long entry_point_address = getEntryPoint(exe_name.c_str()) + start_address;
@@ -329,6 +387,7 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
     //	check if child has exited (not likely but to make sure)
     if (WIFEXITED(wait_status))
     {
+		std::cout << "ERROR: process terminated\n";
         printEndMsg(wait_status);
         return;
     }
@@ -349,6 +408,10 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
     {
         putBreakPoint(address_found, symbol_name);
     }
+
+	//	interact with user
+    interactWithUser(child_pid);
+
 
     //  start child's program -- currently at entry point
     ptrace(PTRACE_CONT, child_pid, NULL, NULL);
@@ -376,17 +439,23 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
         else
         {
             //	print stop messege
-            std::cout << "Stopped at " << breakPoint->symbol_name << "\n";
+            printStopMsg(breakPoint->symbol_name);
+
 
             //	interact with user
             interactWithUser(child_pid);
 
-            //	do original command of the function
-            ptrace(PTRACE_SINGLESTEP, child_pid, NULL, NULL);
-            wait(&wait_status);
+			//	Make sure next command is still the breakpoint we stopped (meaning user didn't do step over until a next breakpoint)
+			ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+			if(my_breakPoints.isExists(regs.rip)){
+				BreakPoint* breakPoint = my_breakPoints.getBreakPoint(regs.rip);
+				unsigned long current_data  = ptrace(PTRACE_PEEKTEXT, child_pid, (void *)regs.rip, NULL);
+				if(current_data == breakPoint->original_data)
+				{
+					advanceOneCommand();
+				}
+			}
 
-            //	return breakpoint
-            ptrace(PTRACE_POKETEXT, child_pid, (void *)breakPoint->address, (void *)breakPoint->data_trap);
         }
         //  continue child's program
         ptrace(PTRACE_CONT, child_pid, NULL, NULL);

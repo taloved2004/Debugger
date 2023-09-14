@@ -8,8 +8,8 @@ return a;
 int main(){
 
 int b;
-printf("enter num\n");
-scanf("%d", &b);
 b = foo(1);
+b = foo(2);
+
 return 43;
 }

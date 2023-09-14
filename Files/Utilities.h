@@ -49,6 +49,7 @@ std::vector<std::string> parseRequset(const char *cmd_line);
 void printRegs(pid_t child_pid);
 void printMem(std::vector<std::string> req_vector, pid_t child_pid);
 void printHelpMsg();
+void printStopMsg(std::string symbol_name);
 void printEndMsg(int wait_status);
 
 //  ----------- Print functions - END -----------

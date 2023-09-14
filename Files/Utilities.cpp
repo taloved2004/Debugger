@@ -105,6 +105,10 @@ void printHelpMsg()
     printf("\t'quit' - exit the debugger\n");
 }
 
+void printStopMsg(std::string symbol_name){
+	  std::cout << "Stopped at " << symbol_name << "\n";
+}
+
 void printEndMsg(int wait_status)
 {
     int exit_code = WEXITSTATUS(wait_status);

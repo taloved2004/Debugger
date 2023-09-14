@@ -27,6 +27,8 @@
 
 using namespace std;
 
+void advanceOneCommand();
+void handleOneStep(pid_t child_pid);
 void handleRequset(std::string req, pid_t child_pid);
 void interactWithUser(pid_t child_pid);
 void putBreakPoint(unsigned long address_to_breakPoint, std::string symbol_name);
