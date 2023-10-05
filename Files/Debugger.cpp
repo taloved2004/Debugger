@@ -3,6 +3,14 @@
 
 using namespace std;
 
+#define BUFFER_SIZE 4096
+
+void decreaseRipRegister(pid_t child_pid,  struct user_regs_struct& regs){
+	    ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+        regs.rip -= 1;
+        ptrace(PTRACE_SETREGS, child_pid, 0, &regs);
+}
+
 void advanceOneCommand(){
 	int wait_status;
     struct user_regs_struct regs;
@@ -68,13 +76,13 @@ void handleRequset(std::string req, pid_t child_pid)
         return;
     std::vector<std::string> req_vector = parseRequset(req.c_str());
 
-    if (req_vector[0] == "registers")
+    if (req_vector[0] == "regs")
         printRegs(child_pid);
     else if (req_vector[0] == "mem")
         printMem(req_vector, child_pid);
     else if (req_vector[0] == "run")
         std::cout << "Running the process...\n";
-    else if (req_vector[0] == "step")
+    else if (req_vector[0] == "si")
 		handleOneStep(child_pid);
     else if (req_vector[0] == "--help")
         printHelpMsg();
@@ -160,12 +168,13 @@ unsigned long getStartAddressOfFile(std::string exe_name, pid_t child_pid){
     //	get shared libraries from "/proc/[pid]/maps" file
     std::string proc_file_name = "/proc/" + std::to_string(child_pid) + "/maps";
     FILE *maps_file = fopen(proc_file_name.c_str(), "rb");
-        if (maps_file == NULL)
+    if (maps_file == NULL)
     {
         perror("fopen");
         return -1;
     }
-	    char buffer[4096];
+    
+	char buffer[BUFFER_SIZE];
     std::string line;
     
     fgets(buffer, sizeof(buffer), maps_file);
@@ -195,7 +204,7 @@ void checkSharedLibraries(pid_t child_pid, std::string func_name)
         return;
     }
 
-    char buffer[4096];
+    char buffer[BUFFER_SIZE];
     std::string line;
 
     while (fgets(buffer, sizeof(buffer), maps_file))
@@ -348,11 +357,12 @@ pid_t run_target(int argc, char **argv)
     return 0;
 }
 
-void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_library, std::string symbol_name, std::string exe_name, bool has_lazy_binding)
+bool run_debugger(pid_t child_pid, long address_found, std::string symbol_name, std::string exe_name)
 {
     //	vars
     int wait_status;
     struct user_regs_struct regs;
+	bool is_from_shared_library = (address_found ==0);
 
     unsigned long long data_of_function, data_trap_of_function;
 
@@ -364,18 +374,18 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
     waitpid(child_pid, &wait_status, 0);
 
 	//	get start address in memory of the executable
-	unsigned long start_address = isExec(exe_name.c_str()) ? 0 : getStartAddressOfFile(exe_name, child_pid);
-	if(start_address == -1)
+	unsigned long start_offset = isDynLib(exe_name.c_str()) ? getStartAddressOfFile(exe_name, child_pid) :0 ;
+	if(start_offset == -1)
 	{
 		std::cout << "Error: Could not find starting address of exeutable in memory\n";
-		return;
+		return true;
 	}
 	//	update real location in memory
-	address_found += start_address;
+	address_found += start_offset;
 
     //	start until the entry point of the executable
     //	get entry point address
-    unsigned long entry_point_address = getEntryPoint(exe_name.c_str()) + start_address;
+    unsigned long entry_point_address = getEntryPoint(exe_name.c_str()) + start_offset;
 
     //	put breakpoint in entry point
     putBreakPoint(entry_point_address, "entry_point");
@@ -389,15 +399,13 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
     {
 		std::cout << "ERROR: process terminated\n";
         printEndMsg(wait_status);
-        return;
+        return true;
     }
     //	remove breakpoint and set rip to the start command
 	my_breakPoints.removeBreakPointForGood(entry_point_address);
 
     //	point to original command again
-    ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
-    regs.rip -= 1;
-    ptrace(PTRACE_SETREGS, child_pid, 0, &regs);
+	decreaseRipRegister(child_pid, regs);
 
     //	check all shared libraries if they contain the function
     checkSharedLibraries(child_pid, symbol_name);
@@ -412,20 +420,15 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
 	//	interact with user
     interactWithUser(child_pid);
 
-
     //  start child's program -- currently at entry point
     ptrace(PTRACE_CONT, child_pid, NULL, NULL);
-
-    //  wait for child to stop/finish
     wait(&wait_status);
 
     while (!WIFEXITED(wait_status))
     {
 
         //	point to original command again
-        ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
-        regs.rip -= 1;
-        ptrace(PTRACE_SETREGS, child_pid, 0, &regs);
+		decreaseRipRegister(child_pid, regs);
 
         //  remove break at starting point by restoring original data
         struct BreakPoint *breakPoint = my_breakPoints.getBreakPoint(regs.rip);
@@ -433,15 +436,14 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
 
         if (breakPoint->symbol_name == "fork")
         {
-            //  for later implimention
+            //  for later implementation
             handleFork();
         }
         else
         {
             //	print stop messege
             printStopMsg(breakPoint->symbol_name);
-
-
+            
             //	interact with user
             interactWithUser(child_pid);
 
@@ -452,6 +454,7 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
 				unsigned long current_data  = ptrace(PTRACE_PEEKTEXT, child_pid, (void *)regs.rip, NULL);
 				if(current_data == breakPoint->original_data)
 				{
+					//	advancing one command - it will put the breakpoint back inplace
 					advanceOneCommand();
 				}
 			}
@@ -465,6 +468,7 @@ void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_libra
     }
 
     printEndMsg(wait_status);
+    return false;
 }
 
 //  ------------------  Debugger functions - END ------------------

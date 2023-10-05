@@ -51,7 +51,7 @@ void initiateForkBreakPoint(std::string exe_name);
 //  ------------------  Debugger functions ------------------
 
 pid_t run_target(int argc, char **argv);
-void run_debugger(pid_t child_pid, long address_found, bool is_from_shared_library, std::string symbol_name, std::string exe_name, bool has_lazy_binding);
+bool run_debugger(pid_t child_pid, long address_found, std::string symbol_name, std::string exe_name);
 
 //  ------------------  Debugger functions - END ------------------
 

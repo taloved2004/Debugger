@@ -30,6 +30,30 @@ bool isExec(const char *exe_file_name)
     return true;
 }
 
+bool isDynLib(const char *exe_file_name)
+{
+    //  open elf file
+    FILE *file = fopen(exe_file_name, "rb");
+    if (file == NULL)
+    {
+        perror("fopen");
+        return false;
+    }
+
+    // extract elf header
+    Elf64_Ehdr elfHeader;
+    if (fread(&elfHeader, sizeof(elfHeader), 1, file) != 1)
+    {
+        perror("fread");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    
+    return elfHeader.e_type == ET_DYN;
+}
+
 
 unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *symbol_name, int *error_val, FILE *file, int text_section_index)
 {
@@ -72,6 +96,8 @@ unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *sy
 		
 		//get the human-readable name if it's a compiler generated name (such as "_Z3foovx")
 		std::string real_name(demangleSymbol(name2));
+       // std::cout << "name: " << name_str << "real_name: " << real_name << "\n";
+
 		name_str = real_name == ""? name_str : real_name;
         std::string symbol_str(symbol_name);
         if (name_str == symbol_str || name_str.find(symbol_str + "@") != std::string::npos)
@@ -128,6 +154,7 @@ unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *sy
 /* symbol_name		- The symbol (maybe function) we need to search for.
  * exe_file_name	- The file where we search the symbol in.
  * error_val		- If  1: A global symbol was found, and defined in the given executable.
+ * 			- If  0: syscall error occured.
  * 			- If -1: Symbol not found.
  *			- If -2: Multiple local functions were found.
  * 			- If -3: The symbol was found, it is global, but it is not defined in the executable. (then search the got)

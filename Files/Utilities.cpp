@@ -99,10 +99,11 @@ void printMem(std::vector<std::string> req_vector, pid_t child_pid)
 void printHelpMsg()
 {
     printf("\t-------Options:-------\n");
-    printf("\t'regs' - print regs' value\n");
-    printf("\t'mem 0x***' - print address' value (must be in hexa)\n");
-    printf("\t'run' - start/continue process' executing\n");
-    printf("\t'quit' - exit the debugger\n");
+    printf("\t'regs':       print regs' value\n");
+    printf("\t'mem 0x***':  print address' value (must be in hexa)\n");
+    printf("\t'run':        start/continue process' executing\n");
+    printf("\t'si':         advance a single command\n");
+    printf("\t'quit':       exit the debugger\n");
 }
 
 void printStopMsg(std::string symbol_name){
@@ -220,8 +221,9 @@ std::string removeNameSpace(std::string str) {
 std::string demangleSymbol(const char* mangledSymbol) {
     int status;
     char* demangledName = abi::__cxa_demangle(mangledSymbol, nullptr, nullptr, &status);
-
+	
     if (status == 0) {
+    
         std::string result(demangledName);
         free(demangledName); // Don't forget to free the memory.
 		

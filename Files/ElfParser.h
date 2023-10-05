@@ -30,6 +30,7 @@
 #define ET_CORE 4 // Core file
 
 bool isExec(const char *exe_file_name);
+bool isDynLib(const char *exe_file_name);
 unsigned long search_symbol(Elf64_Shdr symtab, Elf64_Shdr strtab, const char *symbol_name, int *error_val, FILE *file, int text_section_index);
 unsigned long find_symbol(const char *symbol_name, const char *exe_file_name, int *error_val);
 unsigned long get_location_in_got(const char *symbol_name, const char *exe_file_name, int *error_val);
